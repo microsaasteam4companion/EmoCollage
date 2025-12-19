@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+google-generativeai
+python-dotenv
+fastapi
+uvicorn
+python-multipart
+Pillow
+# NEW: Open Source Image Engine Tools
+opencv-python-headless
+rembg
+huggingface_hub
+numpy
+scikit-image
+requests
