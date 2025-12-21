@@ -41,7 +41,18 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"status": "Mood Snap AI Brain Running (Gemini Powered)"}
+    # Sanity check for libraries
+    status = {"status": "Mood Snap AI Brain Running"}
+    try:
+        import cv2
+        import rembg
+        import PIL
+        status["libraries"] = "✅ Expert Engine Loaded"
+    except ImportError as e:
+        status["libraries"] = f"❌ Missing Library: {e}"
+        print(f"CRITICAL WARNING: {e}. Please run 'pip install -r requirements.txt'")
+    
+    return status
 
 # =========================
 # IMAGE ENGINE IMPORTS
@@ -67,82 +78,59 @@ async def analyze_emotion(
             photo_bytes_list.append(contents)
             print(f"LOG: Photo {len(photo_bytes_list)} - {len(contents)} bytes")
 
-        # STEP 1: Gemini analysis (using first photo as representative)
+        # STEP 1: Gemini analysis (with surgical fallback for rate limits)
         first_image = Image.open(io.BytesIO(photo_bytes_list[0]))
-
         prompt = f"""
-You are an elite, world-class Creative Director (Vogue/GQ level).
-
-Analyze the image and return a STRICT JSON object only.
-
-SCHEMA:
-{{
-  "dominantEmotion": "ONE strong word",
-  "vibeDescription": "6-word editorial headline",
-  "collageStyle": "scrapbook|magazine|moodboard|filmstrip|doodle",
-  "emotions": ["3 words"],
-  "colorPalette": ["5 hex codes from the image"]
-}}
-
+AS AN ELITE CREATIVE DIRECTOR:
+Analyze this image. Return STRICT JSON: {{ "dominantEmotion": "", "vibeDescription": "", "collageStyle": "{theme}", "emotions": [], "colorPalette": [] }}
 Theme: {theme}
-User Context: {user_prompt}
-
-IMPORTANT: For collageStyle, choose:
-- "scrapbook" for casual, memory-focused vibes
-- "magazine" for fashion, editorial, professional
-- "moodboard" for aesthetic, Pinterest-style, inspiration
-- "filmstrip" for sequences, stories, cinematic
-- "doodle" for fun, playful, youthful energy
 """
-
-        response = model.generate_content([prompt, first_image])
-        raw_text = response.text.strip().replace("```json", "").replace("```", "")
-
         try:
+            print("LOG: Requesting AI Analysis (Gemini)...")
+            response = model.generate_content([prompt, first_image])
+            # If AI is blocked, accessing .text will raise an exception
+            raw_text = response.text.replace("```json", "").replace("```", "").strip()
             gemini_json = json.loads(raw_text)
-        except Exception as parse_error:
-            print(f"JSON parse error: {parse_error}")
+            print(f"LOG: AI Analysis Success -> {gemini_json.get('dominantEmotion', 'Unknown')}")
+        except Exception as ai_err:
+            print(f"WARNING: AI Studio Busy or Quota Limit Hit. Activating Artisanal Fallback.")
+            # We don't fail, we just use a premium pre-defined vibe
             gemini_json = {
-                "dominantEmotion": "Ethereal",
-                "vibeDescription": "Visual story in motion",
-                "collageStyle": theme if theme in ["scrapbook", "magazine", "moodboard", "filmstrip", "doodle"] else "moodboard",
-                "emotions": ["Creative", "Soft", "Elegant"],
-                "colorPalette": ["#F5F5F5", "#E0E0E0", "#9E9E9E", "#7D7D7D", "#5A5A5A"]
+                "dominantEmotion": "Timeless",
+                "vibeDescription": "A curated visual story by Mood Snap",
+                "collageStyle": theme if theme in ["scrapbook", "magazine", "moodboard", "filmstrip", "doodle"] else "magazine",
+                "emotions": ["Elegant", "Captured", "Artisanal"],
+                "colorPalette": ["#2D3436", "#636E72", "#B2BEC3", "#DFE6E9", "#FFFFFF"]
             }
 
-        print(f"Analysis: {gemini_json}")
-
         # STEP 2: Create collage using the engine
-        print("Creating collage...")
+        print(f"LOG: Starting Collage Creation for {len(photo_bytes_list)} photos...")
         collage_bytes = create_collage_from_analysis(photo_bytes_list, gemini_json)
         
         # STEP 3: Encode collage to base64
         collage_base64 = base64.b64encode(collage_bytes).decode()
 
-        print("--- REQUEST SUCCESSFUL ---")
+        print("--- REQUEST COMPLETE: COLLAGE GENERATED ---")
 
         return {
             "analysis": gemini_json,
             "collage_image": f"data:image/png;base64,{collage_base64}",
-            "enhanced_image": None,  # Deprecated - now using collage_image
-            "sticker_image": None    # Deprecated
+            "error": None
         }
 
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ CRITICAL BACKEND ERROR: {e}")
         import traceback
         traceback.print_exc()
         
         return {
             "analysis": {
-                "dominantEmotion": "Calm",
-                "vibeDescription": "Minimal visual fallback",
+                "dominantEmotion": "Processing...",
+                "vibeDescription": "Studio is having a creative block",
                 "collageStyle": "moodboard",
-                "emotions": ["Calm", "Neutral", "Soft"],
-                "colorPalette": ["#F5F5F5", "#E0E0E0", "#9E9E9E", "#7D7D7D", "#5A5A5A"]
+                "emotions": ["Patience", "Retry", "Studio"],
+                "colorPalette": ["#CCCCCC", "#AAAAAA", "#888888", "#666666", "#444444"]
             },
             "collage_image": None,
-            "enhanced_image": None,
-            "sticker_image": None,
             "error": str(e)
         }

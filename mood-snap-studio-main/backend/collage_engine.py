@@ -4,6 +4,7 @@ Orchestrates template selection, image processing, and final composition
 """
 
 import io
+import random
 from PIL import Image, ImageDraw, ImageFont
 from typing import List, Tuple
 import base64
@@ -11,8 +12,9 @@ import base64
 from collage_templates import get_template_by_style, CollageTemplate, PhotoPlacement
 from image_engine import (
     apply_luxury_grade, apply_filter, add_polaroid_frame,
-    add_shadow, add_texture, rotate_image, create_gradient_background,
-    resize_to_fit, hex_to_rgb
+    add_premium_shadow, add_studio_texture, rotate_image, create_gradient_background,
+    resize_to_fit, hex_to_rgb, create_cutout, apply_watercolor_effect,
+    add_washi_tape, add_hand_drawn_doodle
 )
 
 
@@ -30,15 +32,6 @@ class CollageEngine:
                       emotion: str) -> bytes:
         """
         Main method to create a complete collage
-        
-        Args:
-            photo_bytes_list: List of image bytes
-            style: Detected style (e.g., "magazine", "scrapbook")
-            color_palette: AI-detected color palette
-            emotion: Dominant emotion
-            
-        Returns:
-            bytes: Final composed collage as PNG bytes
         """
         num_photos = len(photo_bytes_list)
         
@@ -47,27 +40,49 @@ class CollageEngine:
         
         # 2. Create canvas with background
         self.canvas = self._create_background()
+        self.canvas = self.canvas.convert("RGBA")
         
-        # 3. Process and place each photo
+        # 3. Process each photo first (collect in a list for sorting)
+        layers = []
+        total_photos = len(photo_bytes_list)
+        available_slots = len(self.template.placements)
+        
+        print(f"LOG: Engine received {total_photos} photos. Selected template '{self.template.name}' has {available_slots} slots.")
+        
         for i, photo_bytes in enumerate(photo_bytes_list):
-            if i >= len(self.template.placements):
-                break  # Don't exceed template capacity
-                
+            if i >= available_slots:
+                print(f"LOG: Skipping photo {i+1} (No more slots in template)")
+                break
+            
+            print(f"LOG: Processing Photo {i+1}/{total_photos}...")
             placement = self.template.placements[i]
-            processed_photo = self._process_photo(photo_bytes, placement)
-            self._place_photo(processed_photo, placement)
+            try:
+                processed_photo = self._process_photo(photo_bytes, placement)
+                layers.append((processed_photo, placement))
+                print(f"LOG: Photo {i+1} layer created successfully.")
+            except Exception as e:
+                print(f"ERROR: Failed photo {i+1} processing: {e}")
         
-        # 4. Add decorative elements
+        # 4. Sort layers by z_index
+        print(f"LOG: Sorting {len(layers)} layers for composition...")
+        layers.sort(key=lambda x: getattr(x[1], 'z_index', 0))
+        
+        # 5. Place sorted layers
+        for idx, (photo, placement) in enumerate(layers):
+            print(f"LOG: Pasting layer {idx+1}/{len(layers)} onto canvas...")
+            self._place_photo(photo, placement)
+        
+        # 6. Add decorative elements (stickers, doodles)
         self._add_decorations(color_palette, emotion)
         
-        # 5. Final polish
-        self.canvas = add_texture(self.canvas, "paper")
+        # 7. Final Studio Polish (HD Texture)
+        print("LOG: Applying final Studio Polish (Paper/Film Texture)...")
+        self.canvas = add_studio_texture(self.canvas)
         
-        # 6. Convert to bytes
+        # 8. High-Fidelity Export
+        print("LOG: Exporting High-Fidelity collage (PNG)...")
         output = io.BytesIO()
-        self.canvas.save(output, format='PNG', quality=95)
-        output.seek(0)
-        
+        self.canvas.save(output, format='PNG', optimize=True)
         return output.getvalue()
     
     def _create_background(self) -> Image.Image:
@@ -80,158 +95,111 @@ class CollageEngine:
             color2 = hex_to_rgb(self.template.background_colors[1] if len(self.template.background_colors) > 1 else self.template.background_colors[0])
             return create_gradient_background(width, height, color1, color2)
         else:
-            # Solid color
             color = hex_to_rgb(self.template.background_colors[0])
             return Image.new("RGB", (width, height), color)
     
     def _process_photo(self, photo_bytes: bytes, placement: PhotoPlacement) -> Image.Image:
-        """Process a single photo according to placement specs"""
-        # 1. Load and apply luxury grading
-        img = apply_luxury_grade(photo_bytes)
-        
-        # 2. Resize to fit placement
+        """Process a single photo with expert effects"""
+        # 1. Background removal optimization (only if template suggests it)
+        if getattr(placement, "use_cutout", False):
+            img = create_cutout(photo_bytes)
+        else:
+            img = apply_luxury_grade(photo_bytes)
+            
+        # 2. Resize
         img = resize_to_fit(img, placement.width, placement.height)
         
-        # 3. Apply filter if specified
-        if placement.filter != "none":
+        # 3. Artistic filters
+        if placement.filter == "watercolor":
+            img = apply_watercolor_effect(img)
+        elif placement.filter != "none":
             img = apply_filter(img, placement.filter)
         
-        # 4. Add frame if specified
+        # 4. Frames
         if placement.frame_style == "polaroid":
             img = add_polaroid_frame(img, "white")
-        elif placement.frame_style == "border":
-            img = self._add_simple_border(img, 10, "white")
         
-        # 5. Rotate if needed
+        # 5. Rotation
         if placement.rotation != 0:
             img = rotate_image(img, placement.rotation)
+            
+        # 6. Premium Shadow
+        if not getattr(placement, "no_shadow", False):
+            img = add_premium_shadow(img)
         
         return img
     
-    def _add_simple_border(self, img: Image.Image, border_width: int, color: str) -> Image.Image:
-        """Add simple border around image"""
-        new_width = img.width + (border_width * 2)
-        new_height = img.height + (border_width * 2)
-        
-        bordered = Image.new("RGB", (new_width, new_height), color)
-        bordered.paste(img, (border_width, border_width))
-        
-        return bordered
-    
     def _place_photo(self, photo: Image.Image, placement: PhotoPlacement):
-        """Place processed photo on canvas"""
-        # For rotated images, we need to handle positioning carefully
-        self.canvas.paste(photo, (placement.x, placement.y), photo if photo.mode == 'RGBA' else None)
+        """Place processed photo on canvas using alpha composition"""
+        final_x = placement.x
+        final_y = placement.y
+        
+        print(f"LOG: Composing photo at ({final_x}, {final_y})...")
+        
+        # Expert Fix: Ensure RGBA for transparency support
+        if photo.mode != 'RGBA':
+            photo = photo.convert('RGBA')
+            
+        # Create temp layer
+        layer = Image.new("RGBA", self.canvas.size, (0, 0, 0, 0))
+        layer.paste(photo, (final_x, final_y), photo)
+        
+        # Merge with main canvas
+        self.canvas = Image.alpha_composite(self.canvas, layer)
     
     def _add_decorations(self, color_palette: List[str], emotion: str):
-        """Add decorative elements like doodles, text, stickers"""
-        draw = ImageDraw.Draw(self.canvas)
-        
+        """Add expert decorations"""
         for decoration in self.template.decorations:
             dec_type = decoration.get("type")
+            color = color_palette[0] if color_palette else "#000000"
             
             if dec_type == "doodle":
-                self._draw_doodle(draw, decoration, color_palette)
-            elif dec_type == "text":
-                self._draw_text(draw, decoration)
+                add_hand_drawn_doodle(
+                    self.canvas, 
+                    decoration.get("shape", "heart"),
+                    decoration["x"], 
+                    decoration["y"], 
+                    decoration.get("size", 60),
+                    decoration.get("color", color)
+                )
             elif dec_type == "washi_tape":
-                self._draw_washi_tape(draw, decoration)
-            elif dec_type == "color_swatch":
-                self._draw_color_swatches(draw, decoration, color_palette)
+                add_washi_tape(
+                    self.canvas,
+                    decoration["x"],
+                    decoration["y"],
+                    decoration.get("rotation", 0),
+                    decoration.get("color", color)
+                )
+            elif dec_type == "text":
+                self._draw_text(decoration)
     
-    def _draw_doodle(self, draw: ImageDraw.Draw, decoration: dict, palette: List[str]):
-        """Draw simple doodle shapes"""
-        shape = decoration.get("shape", "circle")
-        x, y = decoration["x"], decoration["y"]
-        size = decoration.get("size", 50)
-        color = decoration.get("color", palette[0] if palette else "#000000")
-        
-        if shape == "heart":
-            # Simple heart approximation
-            draw.ellipse([x, y, x+size//2, y+size//2], outline=color, width=3)
-            draw.ellipse([x+size//2, y, x+size, y+size//2], outline=color, width=3)
-        elif shape == "star":
-            # Simple star
-            points = self._get_star_points(x, y, size)
-            draw.polygon(points, outline=color, width=3)
-        elif shape == "circle":
-            draw.ellipse([x, y, x+size, y+size], outline=color, width=3)
-        elif shape == "squiggle":
-            # Random squiggly line
-            points = [(x, y), (x+size//3, y-20), (x+2*size//3, y+20), (x+size, y)]
-            draw.line(points, fill=color, width=4)
-    
-    def _get_star_points(self, cx: int, cy: int, size: int) -> List[Tuple[int, int]]:
-        """Generate points for a 5-pointed star"""
-        import math
-        points = []
-        for i in range(10):
-            angle = math.pi * 2 * i / 10 - math.pi / 2
-            radius = size if i % 2 == 0 else size // 2
-            x = cx + int(radius * math.cos(angle))
-            y = cy + int(radius * math.sin(angle))
-            points.append((x, y))
-        return points
-    
-    def _draw_text(self, draw: ImageDraw.Draw, decoration: dict):
-        """Draw text overlay"""
+    def _draw_text(self, decoration: dict):
+        """Draw high-quality text"""
+        draw = ImageDraw.Draw(self.canvas)
         try:
-            # Try to use a nice font, fallback to default
-            font = ImageFont.truetype("arial.ttf", decoration.get("font_size", 32))
+            # We try for a serif or handwritten font if available
+            font = ImageFont.truetype("arialbi.ttf", decoration.get("font_size", 40))
         except:
             font = ImageFont.load_default()
         
+        # Add slight shadow to text
+        draw.text(
+            (decoration["x"]+2, decoration["y"]+2),
+            decoration["content"],
+            fill=(0, 0, 0, 100),
+            font=font
+        )
         draw.text(
             (decoration["x"], decoration["y"]),
             decoration["content"],
             fill=decoration.get("color", "#000000"),
             font=font
         )
-    
-    def _draw_washi_tape(self, draw: ImageDraw.Draw, decoration: dict):
-        """Draw washi tape effect"""
-        x, y = decoration["x"], decoration["y"]
-        color = decoration.get("color", "#FFB6C1")
-        
-        # Simple rectangle with transparency effect
-        draw.rectangle(
-            [x, y, x+100, y+30],
-            fill=color,
-            outline=color
-        )
-    
-    def _draw_color_swatches(self, draw: ImageDraw.Draw, decoration: dict, palette: List[str]):
-        """Draw color palette swatches"""
-        x, y = decoration["x"], decoration["y"]
-        swatch_size = 40
-        spacing = 10
-        
-        for i, color in enumerate(palette[:5]):  # Max 5 swatches
-            swatch_x = x
-            swatch_y = y + (i * (swatch_size + spacing))
-            draw.rectangle(
-                [swatch_x, swatch_y, swatch_x+swatch_size, swatch_y+swatch_size],
-                fill=color,
-                outline="#FFFFFF",
-                width=2
-            )
 
 
 def create_collage_from_analysis(photos: List[bytes], analysis: dict) -> bytes:
-    """
-    Convenience function to create collage from analysis results
-    
-    Args:
-        photos: List of photo bytes
-        analysis: Analysis dict with style, colorPalette, dominantEmotion
-        
-    Returns:
-        bytes: PNG collage
-    """
     engine = CollageEngine()
-    
     style = analysis.get("collageStyle", "moodboard")
     palette = analysis.get("colorPalette", ["#FFFFFF", "#000000"])
     emotion = analysis.get("dominantEmotion", "Joy")
-    
     return engine.create_collage(photos, style, palette, emotion)

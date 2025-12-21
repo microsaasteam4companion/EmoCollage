@@ -10,18 +10,19 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 
-// V4: Elite Modes
+// V4: Multi-Photo Artisanal Modes
 const MODES = [
-  { id: "pinterest", label: "Pinterest Style", icon: Sparkles, desc: "Aesthetic, text-free, layered mood boards." },
-  { id: "magazine", label: "Editorial", icon: BookOpen, desc: "Clean, photo-focused spreads (Text-Free)." },
-  { id: "portrait", label: "Cinematic", icon: Camera, desc: "Studio-grade lighting & framing." },
-  { id: "doodle", label: "Scrapbook", icon: Brush, desc: "Washi tape & paper textures." },
+  { id: "scrapbook", label: "Expert Scrapbook", icon: Brush, desc: "Cutouts, stickers, washi tape & paper layers." },
+  { id: "magazine", label: "Modern Editorial", icon: BookOpen, desc: "Clean, photo-focused premium spreads." },
+  { id: "moodboard", label: "Aesthetic MoodBoard", icon: Sparkles, desc: "Watercolor effects & layered inspiration." },
+  { id: "filmstrip", label: "Film Story", icon: Camera, desc: "Cinematic sequences with grain & borders." },
 ];
 
 const PhotoUploader = () => {
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<EmotionAnalysis | null>(null);
+  const [resultImage, setResultImage] = useState<string | null>(null);
 
   // State
   const [activeTab, setActiveTab] = useState("magazine");
@@ -29,6 +30,13 @@ const PhotoUploader = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const resetProject = () => {
+    setAnalysis(null);
+    setResultImage(null);
+    setSelectedPhotos([]);
+    setUserPrompt("");
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -40,57 +48,22 @@ const PhotoUploader = () => {
     });
   };
 
-  // Helper to compress image for faster AI analysis
-  const compressImage = (dataUrl: string): Promise<Blob> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = dataUrl;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maximize_size = 1024; // Resize to max 1024px (plenty for AI)
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maximize_size) {
-            height *= maximize_size / width;
-            width = maximize_size;
-          }
-        } else {
-          if (height > maximize_size) {
-            width *= maximize_size / height;
-            height = maximize_size;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-        }, 'image/jpeg', 0.8); // 80% quality JPEG
-      };
-    });
-  };
-
   const analyzeAndCreateCollage = async () => {
     if (selectedPhotos.length < 1) return;
     setIsAnalyzing(true);
+    setResultImage(null);
+
     try {
       const formData = new FormData();
 
-      // Send ALL selected photos to backend
+      // PERMANENT SOLUTION: Send ORIGINAL high-res blobs (No more compression)
       for (let i = 0; i < selectedPhotos.length; i++) {
-        const compressedBlob = await compressImage(selectedPhotos[i]);
-        formData.append("files", compressedBlob, `photo${i}.jpg`);
+        const response = await fetch(selectedPhotos[i]);
+        const blob = await response.blob();
+        formData.append("files", blob, `photo${i}.png`); // Using PNG convention for maximum quality
       }
 
-      // Pass the selected specific mode as 'theme'
       formData.append("theme", activeTab);
-
-      // User prompt
       formData.append("user_prompt", userPrompt);
 
       const apiResponse = await fetch("http://localhost:8000/analyze-emotion", {
@@ -98,23 +71,23 @@ const PhotoUploader = () => {
         body: formData,
       });
 
-      if (!apiResponse.ok) throw new Error("Studio requires a reliable connection. Please try again.");
+      if (!apiResponse.ok) throw new Error("Studio requires a reliable connection.");
 
       const data = await apiResponse.json();
 
-      // 1. UPDATE ANALYSIS
-      setAnalysis(data.analysis);
-
-      // 2. The backend now returns a complete collage image
       if (data.collage_image) {
-        // Store the collage as the first "photo" for display
-        setSelectedPhotos([data.collage_image]);
+        setResultImage(data.collage_image);
+        setAnalysis(data.analysis);
         toast({
-          title: "Collage Created! 🎨",
+          title: "Artisanal Collage Created! 🎨",
           description: `${data.analysis.collageStyle} style with ${data.analysis.dominantEmotion} vibes`,
         });
       } else {
-        toast({ title: "Analysis Complete", description: "Your story is ready." });
+        toast({
+          title: "Creative Block",
+          description: data.error || "The AI studio couldn't compose the image. Please try again!",
+          variant: "destructive"
+        });
       }
     } catch (error: any) {
       console.error(error);
@@ -128,8 +101,8 @@ const PhotoUploader = () => {
     }
   };
 
-  if (analysis) {
-    return <CollageDisplay photos={selectedPhotos} analysis={analysis} onReset={() => setAnalysis(null)} />;
+  if (analysis && resultImage) {
+    return <CollageDisplay photos={[resultImage]} analysis={analysis} onReset={resetProject} />;
   }
 
   return (
@@ -192,14 +165,14 @@ const PhotoUploader = () => {
                 <div
                   key={mode.id}
                   onClick={() => setActiveTab(mode.id)}
-                  className={`p - 3 rounded - xl border cursor - pointer transition - all duration - 300 ${activeTab === mode.id
+                  className={`p-3 rounded-xl border cursor-pointer transition-all duration-300 ${activeTab === mode.id
                     ? "bg-white text-black border-white shadow-lg shadow-white/5"
                     : "bg-zinc-900/50 border-white/5 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
-                    } `}
+                    }`}
                 >
                   <mode.icon className="w-5 h-5 mb-2" />
-                  <div className="text-xs font-bold uppercase">{mode.label}</div>
-                  <div className="text-[10px] opacity-60 leading-tight mt-1 truncate">{mode.desc}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-tighter">{mode.label}</div>
+                  <div className="text-[9px] opacity-60 leading-tight mt-1 truncate">{mode.desc}</div>
                 </div>
               ))}
             </div>
