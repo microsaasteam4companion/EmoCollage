@@ -12,9 +12,9 @@ import { Card, CardContent } from "@/components/ui/card";
 
 // V4: Multi-Photo Artisanal Modes
 const MODES = [
-  { id: "scrapbook", label: "Expert Scrapbook", icon: Brush, desc: "Cutouts, stickers, washi tape & paper layers." },
+  { id: "sticker", label: "Ultimate Sticker", icon: Sparkles, desc: "Dense cutouts with thick doodle outlines & stickers." },
+  { id: "scrapbook", label: "Expert Scrapbook", icon: Brush, desc: "Playful cutouts, washi tape & paper layers." },
   { id: "magazine", label: "Modern Editorial", icon: BookOpen, desc: "Clean, photo-focused premium spreads." },
-  { id: "moodboard", label: "Aesthetic MoodBoard", icon: Sparkles, desc: "Watercolor effects & layered inspiration." },
   { id: "filmstrip", label: "Film Story", icon: Camera, desc: "Cinematic sequences with grain & borders." },
 ];
 
@@ -66,7 +66,7 @@ const PhotoUploader = () => {
       formData.append("theme", activeTab);
       formData.append("user_prompt", userPrompt);
 
-      const apiResponse = await fetch("http://localhost:8000/analyze-emotion", {
+      const apiResponse = await fetch("http://localhost:8001/analyze-emotion", {
         method: "POST",
         body: formData,
       });

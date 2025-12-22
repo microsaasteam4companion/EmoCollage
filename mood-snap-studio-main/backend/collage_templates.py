@@ -19,6 +19,9 @@ class PhotoPlacement:
     filter: str = "none" # none, luxury, vintage, bw, vibrant, soft, watercolor
     z_index: int = 0
     use_cutout: bool = False # Use background removal
+    use_outline: bool = False # Use doodle outline
+    outline_width: int = 20
+    outline_color: str = "#FFFFFF"
     no_shadow: bool = False
 
 
@@ -222,6 +225,71 @@ def get_doodle_template(num_photos: int) -> CollageTemplate:
 
 
 # ============================================================================
+# TEMPLATE 6: EXPERT STICKER (Cutout Collage)
+# ============================================================================
+def get_sticker_collage_template(num_photos: int) -> CollageTemplate:
+    """
+    Expert Sticker: Ultra-HD Dense Cutout Layout (3000px Vertical)
+    Optimized for ALL cutouts, no frames, and playful decorations.
+    """
+    canvas_w, canvas_h = 2400, 3800
+    
+    # Dense, overlapping slots for a "messy but aesthetic" look
+    placements = [
+        # Center-Left (Hero)
+        PhotoPlacement(x=100, y=100, width=1400, height=1800, rotation=-5, 
+                      use_cutout=True, use_outline=True, outline_width=45, z_index=10),
+        
+        # Top-Right
+        PhotoPlacement(x=1200, y=50, width=1100, height=1300, rotation=4, 
+                      use_cutout=True, use_outline=True, outline_width=35, z_index=2),
+        
+        # Bottom-Right
+        PhotoPlacement(x=1150, y=1900, width=1200, height=1700, rotation=-6, 
+                      use_cutout=True, use_outline=True, outline_width=40, z_index=15),
+        
+        # Bottom-Left
+        PhotoPlacement(x=50, y=2100, width=1100, height=1400, rotation=8, 
+                      use_cutout=True, use_outline=True, outline_width=35, z_index=5),
+        
+        # Middle-Right (Floating)
+        PhotoPlacement(x=1300, y=1200, width=1000, height=1200, rotation=-12, 
+                      use_cutout=True, use_outline=True, outline_width=30, z_index=12),
+        
+        # Middle-Left (Floating)
+        PhotoPlacement(x=50, y=1400, width=900, height=1100, rotation=15, 
+                      use_cutout=True, use_outline=True, outline_width=30, z_index=3),
+    ]
+    
+    # Add more decorations for "Cute" factor
+    decorations = [
+        {"type": "doodle", "shape": "heart", "x": 100, "y": 100, "size": 150, "color": "#FF6B6B"},
+        {"type": "doodle", "shape": "star", "x": 2200, "y": 150, "size": 180, "color": "#F1C40F"},
+        {"type": "doodle", "shape": "squiggle", "x": 1200, "y": 1700, "size": 400, "color": "#FFFFFF"},
+        {"type": "doodle", "shape": "heart", "x": 2300, "y": 3400, "size": 200, "color": "#FF6B6B"},
+        {"type": "doodle", "shape": "star", "x": 150, "y": 3600, "size": 180, "color": "#F1C40F"},
+        {"type": "doodle", "shape": "heart", "x": 1200, "y": 400, "size": 120, "color": "#FC5C65"},
+        {"type": "doodle", "shape": "squiggle", "x": 200, "y": 1400, "size": 250, "color": "#F1C40F"},
+        
+        # Smaller, aesthetic text captions
+        {"type": "text", "content": "#VIBES", "x": 1200, "y": 3650, "font_size": 80, "color": "#2F3640"},
+        {"type": "text", "content": "✨ STORY ✨", "x": 100, "y": 3650, "font_size": 80, "color": "#2F3640"},
+        {"type": "text", "content": "LOVELY", "x": 1800, "y": 3650, "font_size": 90, "color": "#FC5C65"},
+        {"type": "text", "content": "CUTIE", "x": 1500, "y": 100, "font_size": 100, "color": "#F1C40F"},
+    ]
+    
+    return CollageTemplate(
+        name="Sticker",
+        canvas_width=canvas_w,
+        canvas_height=canvas_h,
+        background_type="solid",
+        background_colors=["#F8F9FA"],
+        placements=placements[:num_photos],
+        decorations=decorations
+    )
+
+
+# ============================================================================
 # TEMPLATE SELECTOR
 # ============================================================================
 def get_template_by_style(style: str, num_photos: int) -> CollageTemplate:
@@ -230,8 +298,8 @@ def get_template_by_style(style: str, num_photos: int) -> CollageTemplate:
     """
     style = style.lower()
     
-    if "scrapbook" in style or "memory" in style or "casual" in style:
-        return get_scrapbook_template(num_photos)
+    if "sticker" in style or "cutout" in style or "scrapbook" in style or "memory" in style:
+        return get_sticker_collage_template(num_photos)
     elif "magazine" in style or "editorial" in style or "fashion" in style:
         return get_magazine_template(num_photos)
     elif "mood" in style or "aesthetic" in style or "pinterest" in style:
@@ -240,6 +308,8 @@ def get_template_by_style(style: str, num_photos: int) -> CollageTemplate:
         return get_filmstrip_template(num_photos)
     elif "doodle" in style or "fun" in style or "playful" in style:
         return get_doodle_template(num_photos)
+    elif "sticker" in style or "cutout" in style:
+        return get_sticker_collage_template(num_photos)
     else:
         # Default to mood board for versatility
         return get_moodboard_template(num_photos)

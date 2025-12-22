@@ -14,7 +14,7 @@ from image_engine import (
     apply_luxury_grade, apply_filter, add_polaroid_frame,
     add_premium_shadow, add_studio_texture, rotate_image, create_gradient_background,
     resize_to_fit, hex_to_rgb, create_cutout, apply_watercolor_effect,
-    add_washi_tape, add_hand_drawn_doodle
+    add_washi_tape, add_hand_drawn_doodle, add_doodle_outline
 )
 
 
@@ -78,11 +78,25 @@ class CollageEngine:
         # 7. Final Studio Polish (HD Texture)
         print("LOG: Applying final Studio Polish (Paper/Film Texture)...")
         self.canvas = add_studio_texture(self.canvas)
-        
-        # 8. High-Fidelity Export
-        print("LOG: Exporting High-Fidelity collage (PNG)...")
+
+        # 8. ULTRA-HD Export with maximum quality
+        print("LOG: Exporting ULTRA-HD collage (PNG with maximum quality)...")
         output = io.BytesIO()
-        self.canvas.save(output, format='PNG', optimize=True)
+
+        # Convert to RGB for final export if needed (preserves quality)
+        if self.canvas.mode == 'RGBA':
+            # Create white background for transparency
+            background = Image.new('RGB', self.canvas.size, (255, 255, 255))
+            background.paste(self.canvas, mask=self.canvas.split()[3] if self.canvas.mode == 'RGBA' else None)
+            export_canvas = background
+        else:
+            export_canvas = self.canvas.convert('RGB')
+
+        # Maximum quality PNG export
+        # compress_level=1 (fast but larger file, better quality than optimize=True)
+        export_canvas.save(output, format='PNG', compress_level=1)
+
+        print(f"LOG: Final collage size: {export_canvas.size}, Mode: {export_canvas.mode}")
         return output.getvalue()
     
     def _create_background(self) -> Image.Image:
@@ -123,7 +137,13 @@ class CollageEngine:
         if placement.rotation != 0:
             img = rotate_image(img, placement.rotation)
             
-        # 6. Premium Shadow
+        # 6. Doodle Outlines (New Feature)
+        if getattr(placement, "use_outline", False):
+            print(f"LOG: Applying doodle outline (width: {placement.outline_width})...")
+            # For quality, we apply outline after resizing but before shadow
+            img = add_doodle_outline(img, placement.outline_width, placement.outline_color)
+
+        # 7. Premium Shadow
         if not getattr(placement, "no_shadow", False):
             img = add_premium_shadow(img)
         
